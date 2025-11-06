@@ -92,6 +92,11 @@ local teleportState = {}
 local lastPosition = nil
 local activeCheckpoint = nil -- Текущий активный чекпоинт для возврата
 
+-- Переменные для камеры
+local cameraConnection = nil
+local isCameraAttached = false
+local originalCameraType = nil
+
 -- Переменные для перетаскивания
 local dragging = false
 local dragInput
@@ -153,6 +158,59 @@ end
 
 collapseBtn.MouseButton1Click:Connect(toggleGUI)
 
+-- Функции для работы с камерой
+local function attachCameraToCheckpoint(position)
+    local camera = workspace.CurrentCamera
+    originalCameraType = camera.CameraType
+    
+    -- Сохраняем оригинальный тип камеры и переключаем на Scriptable
+    camera.CameraType = Enum.CameraType.Scriptable
+    
+    -- Позиция камеры: сзади и сверху от чекпоинта
+    local cameraOffset = CFrame.new(0, 5, 10)
+    camera.CFrame = CFrame.new(position) * cameraOffset
+    
+    isCameraAttached = true
+    
+    -- Обновляем камеру каждый кадр, чтобы она оставалась на месте
+    if cameraConnection then
+        cameraConnection:Disconnect()
+    end
+    
+    cameraConnection = game:GetService("RunService").RenderStepped:Connect(function()
+        if isCameraAttached then
+            camera.CFrame = CFrame.new(position) * cameraOffset
+        else
+            cameraConnection:Disconnect()
+        end
+    end)
+end
+
+local function detachCamera()
+    local camera = workspace.CurrentCamera
+    
+    if originalCameraType then
+        camera.CameraType = originalCameraType
+    else
+        camera.CameraType = Enum.CameraType.Custom
+    end
+    
+    isCameraAttached = false
+    
+    if cameraConnection then
+        cameraConnection:Disconnect()
+        cameraConnection = nil
+    end
+end
+
+local function toggleCamera(checkpoint)
+    if isCameraAttached then
+        detachCamera()
+    else
+        attachCameraToCheckpoint(checkpoint.position)
+    end
+end
+
 -- Мгновенная функция телепортации
 local function teleportToPosition(position)
     local character = player.Character
@@ -160,6 +218,11 @@ local function teleportToPosition(position)
     
     local humanoidRootPart = character:FindFirstChild("HumanoidRootPart")
     if not humanoidRootPart then return end
+    
+    -- Отключаем камеру при телепортации
+    if isCameraAttached then
+        detachCamera()
+    end
     
     -- Мгновенная телепортация - напрямую меняем позицию
     humanoidRootPart.CFrame = CFrame.new(position)
@@ -212,7 +275,7 @@ local function updateCheckpointList()
         
         -- Название чекпоинта
         local nameLabel = Instance.new("TextLabel")
-        nameLabel.Size = UDim2.new(0.6, 0, 0.5, 0)
+        nameLabel.Size = UDim2.new(0.5, 0, 0.5, 0)
         nameLabel.Position = UDim2.new(0.05, 0, 0, 0)
         nameLabel.BackgroundTransparency = 1
         nameLabel.Text = checkpoint.name
@@ -224,7 +287,7 @@ local function updateCheckpointList()
         
         -- Координаты в одной строке
         local coordLabel = Instance.new("TextLabel")
-        coordLabel.Size = UDim2.new(0.6, 0, 0.5, 0)
+        coordLabel.Size = UDim2.new(0.5, 0, 0.5, 0)
         coordLabel.Position = UDim2.new(0.05, 0, 0.5, 0)
         coordLabel.BackgroundTransparency = 1
         coordLabel.Text = string.format("X:%.0f  Y:%.0f  Z:%.0f", checkpoint.position.X, checkpoint.position.Y, checkpoint.position.Z)
@@ -237,7 +300,7 @@ local function updateCheckpointList()
         -- Смайлик (меняется в зависимости от состояния)
         local emojiLabel = Instance.new("TextLabel")
         emojiLabel.Size = UDim2.new(0.1, 0, 1, 0)
-        emojiLabel.Position = UDim2.new(0.65, 0, 0, 0) -- Сдвинули вправо
+        emojiLabel.Position = UDim2.new(0.55, 0, 0, 0)
         emojiLabel.BackgroundTransparency = 1
         emojiLabel.TextColor3 = Color3.new(1, 1, 1)
         emojiLabel.TextSize = 16
@@ -254,12 +317,21 @@ local function updateCheckpointList()
         
         -- Кнопка удаления
         local deleteBtn = Instance.new("TextButton")
-        deleteBtn.Size = UDim2.new(0.2, 0, 0.5, 0)
-        deleteBtn.Position = UDim2.new(0.8, 0, 0.5, 0)
+        deleteBtn.Size = UDim2.new(0.15, 0, 0.5, 0)
+        deleteBtn.Position = UDim2.new(0.65, 0, 0, 0)
         deleteBtn.Text = "Удалить"
         deleteBtn.BackgroundColor3 = Color3.new(0.7, 0.2, 0.2)
         deleteBtn.TextColor3 = Color3.new(1, 1, 1)
         deleteBtn.Parent = previewButton
+        
+        -- Кнопка камеры
+        local cameraBtn = Instance.new("TextButton")
+        cameraBtn.Size = UDim2.new(0.15, 0, 0.5, 0)
+        cameraBtn.Position = UDim2.new(0.65, 0, 0.5, 0)
+        cameraBtn.Text = isCameraAttached and "📷🔴" or "📷"
+        cameraBtn.BackgroundColor3 = isCameraAttached and Color3.new(0.8, 0.2, 0.2) or Color3.new(0.3, 0.5, 0.8)
+        cameraBtn.TextColor3 = Color3.new(1, 1, 1)
+        cameraBtn.Parent = previewButton
         
         -- Обработчик нажатия на превью (телепортация)
         previewButton.MouseButton1Click:Connect(function()
@@ -274,7 +346,7 @@ local function updateCheckpointList()
             if not teleportState[checkpoint] then
                 -- Первое нажатие: телепорт к чекпоинту
                 
-                -- Сбрасываем состояние предыдучного активного чекпоинта
+                -- Сбрасываем состояние предыдущего активного чекпоинта
                 if activeCheckpoint and activeCheckpoint ~= checkpoint then
                     teleportState[activeCheckpoint] = false
                 end
@@ -304,6 +376,12 @@ local function updateCheckpointList()
             checkpoint.part:Destroy()
             teleportState[checkpoint] = nil
             table.remove(checkpoints, i)
+            updateCheckpointList()
+        end)
+        
+        -- Обработчик нажатия на кнопку камеры
+        cameraBtn.MouseButton1Click:Connect(function()
+            toggleCamera(checkpoint)
             updateCheckpointList()
         end)
     end
@@ -347,6 +425,12 @@ local function deleteAllCheckpoints()
     end
     checkpoints = {}
     activeCheckpoint = nil
+    
+    -- Отключаем камеру при удалении всех чекпоинтов
+    if isCameraAttached then
+        detachCamera()
+    end
+    
     updateCheckpointList()
 end
 
