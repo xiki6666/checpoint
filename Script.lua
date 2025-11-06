@@ -32,14 +32,14 @@ titleBar.BackgroundColor3 = Color3.new(0.1, 0.1, 0.1)
 titleBar.Parent = mainFrame
 
 local title = Instance.new("TextLabel")
-title.Size = UDim2.new(0.7, 0, 1, 0)
+title.Size = UDim2.new(1, 0, 1, 0) -- Занимает всю ширину
 title.Position = UDim2.new(0, 0, 0, 0)
 title.BackgroundTransparency = 1
 title.Text = "Чекпоинты"
 title.TextColor3 = Color3.new(1, 1, 1)
 title.TextSize = 16
 title.Font = Enum.Font.SourceSansBold
-title.TextXAlignment = Enum.TextXAlignment.Left
+title.TextXAlignment = Enum.TextXAlignment.Center -- Выравнивание по центру
 title.Parent = titleBar
 
 -- Кнопка сворачивания
@@ -234,16 +234,23 @@ local function updateCheckpointList()
         coordLabel.TextXAlignment = Enum.TextXAlignment.Left
         coordLabel.Parent = previewButton
         
-        -- Смайлик 😈 (показывается когда доступен возврат)
+        -- Смайлик (меняется в зависимости от состояния)
         local emojiLabel = Instance.new("TextLabel")
         emojiLabel.Size = UDim2.new(0.1, 0, 1, 0)
         emojiLabel.Position = UDim2.new(0.65, 0, 0, 0) -- Сдвинули вправо
         emojiLabel.BackgroundTransparency = 1
-        emojiLabel.Text = "😈"
         emojiLabel.TextColor3 = Color3.new(1, 1, 1)
         emojiLabel.TextSize = 16
-        emojiLabel.Visible = teleportState[checkpoint] or false
         emojiLabel.Parent = previewButton
+        
+        -- Устанавливаем смайлик в зависимости от состояния
+        if teleportState[checkpoint] then
+            -- Второе состояние: доступен возврат
+            emojiLabel.Text = "😈"
+        else
+            -- Первое состояние: доступна телепортация к чекпоинту
+            emojiLabel.Text = "😎"
+        end
         
         -- Кнопка удаления
         local deleteBtn = Instance.new("TextButton")
@@ -267,7 +274,7 @@ local function updateCheckpointList()
             if not teleportState[checkpoint] then
                 -- Первое нажатие: телепорт к чекпоинту
                 
-                -- Сбрасываем состояние предыдущего активного чекпоинта
+                -- Сбрасываем состояние предыдучного активного чекпоинта
                 if activeCheckpoint and activeCheckpoint ~= checkpoint then
                     teleportState[activeCheckpoint] = false
                 end
