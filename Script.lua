@@ -1,6 +1,7 @@
 -- LocalScript в StarterPlayer.StarterPlayerScripts
 local Players = game:GetService("Players")
 local UserInputService = game:GetService("UserInputService")
+local RunService = game:GetService("RunService")
 local player = Players.LocalPlayer
 local playerGui = player:WaitForChild("PlayerGui")
 
@@ -96,6 +97,14 @@ local activeCheckpoint = nil -- Текущий активный чекпоинт
 local cameraConnection = nil
 local isCameraAttached = false
 local originalCameraType = nil
+local cameraTargetCheckpoint = nil
+
+-- Переменные для управления камерой
+local cameraOffset = Vector3.new(0, 5, 10)
+local cameraRotation = {x = 0, y = 0}
+local cameraDistance = 10
+local isRightMouseDown = false
+local lastMousePosition = nil
 
 -- Переменные для перетаскивания
 local dragging = false
@@ -158,32 +167,77 @@ end
 
 collapseBtn.MouseButton1Click:Connect(toggleGUI)
 
+-- Обработчики для управления камерой
+UserInputService.InputBegan:Connect(function(input, gameProcessed)
+    if input.UserInputType == Enum.UserInputType.MouseButton2 and isCameraAttached then
+        isRightMouseDown = true
+        lastMousePosition = UserInputService:GetMouseLocation()
+    end
+end)
+
+UserInputService.InputEnded:Connect(function(input, gameProcessed)
+    if input.UserInputType == Enum.UserInputType.MouseButton2 and isCameraAttached then
+        isRightMouseDown = false
+        lastMousePosition = nil
+    end
+end)
+
+UserInputService.InputChanged:Connect(function(input, gameProcessed)
+    if isCameraAttached and isRightMouseDown and input.UserInputType == Enum.UserInputType.MouseMovement then
+        local currentMousePosition = UserInputService:GetMouseLocation()
+        if lastMousePosition then
+            local delta = currentMousePosition - lastMousePosition
+            cameraRotation.y = cameraRotation.y - delta.X * 0.01
+            cameraRotation.x = cameraRotation.x - delta.Y * 0.01
+            cameraRotation.x = math.clamp(cameraRotation.x, -math.pi/2, math.pi/2)
+        end
+        lastMousePosition = currentMousePosition
+    end
+    
+    if isCameraAttached and input.UserInputType == Enum.UserInputType.MouseWheel then
+        cameraDistance = cameraDistance - input.Position.Z * 0.5
+        cameraDistance = math.clamp(cameraDistance, 2, 50)
+    end
+end)
+
 -- Функции для работы с камерой
-local function attachCameraToCheckpoint(position)
+local function updateCamera()
+    if not isCameraAttached or not cameraTargetCheckpoint then return end
+    
+    local camera = workspace.CurrentCamera
+    
+    -- Вычисляем позицию камеры на основе вращения и расстояния
+    local position = cameraTargetCheckpoint.position
+    local offset = Vector3.new(
+        math.sin(cameraRotation.y) * math.cos(cameraRotation.x) * cameraDistance,
+        math.sin(cameraRotation.x) * cameraDistance,
+        math.cos(cameraRotation.y) * math.cos(cameraRotation.x) * cameraDistance
+    )
+    
+    local cameraPos = position + offset
+    camera.CFrame = CFrame.new(cameraPos, position)
+end
+
+local function attachCameraToCheckpoint(checkpoint)
     local camera = workspace.CurrentCamera
     originalCameraType = camera.CameraType
     
     -- Сохраняем оригинальный тип камеры и переключаем на Scriptable
     camera.CameraType = Enum.CameraType.Scriptable
     
-    -- Позиция камеры: сзади и сверху от чекпоинта
-    local cameraOffset = CFrame.new(0, 5, 10)
-    camera.CFrame = CFrame.new(position) * cameraOffset
+    -- Сбрасываем параметры камеры
+    cameraTargetCheckpoint = checkpoint
+    cameraRotation = {x = 0, y = 0}
+    cameraDistance = 10
     
     isCameraAttached = true
     
-    -- Обновляем камеру каждый кадр, чтобы она оставалась на месте
+    -- Обновляем камеру каждый кадр
     if cameraConnection then
         cameraConnection:Disconnect()
     end
     
-    cameraConnection = game:GetService("RunService").RenderStepped:Connect(function()
-        if isCameraAttached then
-            camera.CFrame = CFrame.new(position) * cameraOffset
-        else
-            cameraConnection:Disconnect()
-        end
-    end)
+    cameraConnection = RunService.RenderStepped:Connect(updateCamera)
 end
 
 local function detachCamera()
@@ -196,6 +250,7 @@ local function detachCamera()
     end
     
     isCameraAttached = false
+    cameraTargetCheckpoint = nil
     
     if cameraConnection then
         cameraConnection:Disconnect()
@@ -207,7 +262,7 @@ local function toggleCamera(checkpoint)
     if isCameraAttached then
         detachCamera()
     else
-        attachCameraToCheckpoint(checkpoint.position)
+        attachCameraToCheckpoint(checkpoint)
     end
 end
 
@@ -328,8 +383,8 @@ local function updateCheckpointList()
         local cameraBtn = Instance.new("TextButton")
         cameraBtn.Size = UDim2.new(0.15, 0, 0.5, 0)
         cameraBtn.Position = UDim2.new(0.65, 0, 0.5, 0)
-        cameraBtn.Text = isCameraAttached and "📷🔴" or "📷"
-        cameraBtn.BackgroundColor3 = isCameraAttached and Color3.new(0.8, 0.2, 0.2) or Color3.new(0.3, 0.5, 0.8)
+        cameraBtn.Text = isCameraAttached and cameraTargetCheckpoint == checkpoint and "📷🔴" or "📷"
+        cameraBtn.BackgroundColor3 = isCameraAttached and cameraTargetCheckpoint == checkpoint and Color3.new(0.8, 0.2, 0.2) or Color3.new(0.3, 0.5, 0.8)
         cameraBtn.TextColor3 = Color3.new(1, 1, 1)
         cameraBtn.Parent = previewButton
         
@@ -371,6 +426,11 @@ local function updateCheckpointList()
             if activeCheckpoint == checkpoint then
                 teleportState[checkpoint] = false
                 activeCheckpoint = nil
+            end
+            
+            -- Если удаляем чекпоинт к которому прикреплена камера, отключаем камеру
+            if cameraTargetCheckpoint == checkpoint then
+                detachCamera()
             end
             
             checkpoint.part:Destroy()
